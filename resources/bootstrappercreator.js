@@ -35,7 +35,7 @@ function createAngularBootstrapperResource (allex, applib, ANGULAR_REQUIREMENTS)
       if (deps.indexOf('allex_angular1elementslib') < 0) deps.push ('allex_angular1elementslib');
       if (deps.indexOf('allex_angularwebcomponent') < 0) deps.push ('allex_angularwebcomponent');
     }else{
-      deps = ['allex_applib'];
+      deps = ['allex_angular1elementslib', 'allex_angularwebcomponent'];
     }
 
     ANGULAR_REQUIREMENTS.traverse (_appendToDeps.bind(null, deps));
@@ -53,7 +53,7 @@ function createAngularBootstrapperResource (allex, applib, ANGULAR_REQUIREMENTS)
 
   AngularBootstrapper.prototype.DEFAULT_CONFIG = function () {
     return {
-      angular_dependencies : ['allex_applib']
+      angular_dependencies : ['allex_angularwebcomponent']
     };
   };
 
@@ -68,6 +68,6 @@ function createAngularBootstrapperResource (allex, applib, ANGULAR_REQUIREMENTS)
 
 
   applib.registerResourceType ('AngularBootstrapper', AngularBootstrapper);
-}  //)(ALLEX, ALLEX.WEB_COMPONENTS.allex_web_webappcomponent, ALLEX.WEB_COMPONENTS.allex_applib, angular, jQuery);
+}
 
 module.exports = createAngularBootstrapperResource;

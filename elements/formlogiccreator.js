@@ -5,117 +5,44 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
 
   var lib = execlib.lib,
     BasicAngularElementController = basicControllers.BasicAngularElementController,
+    FormMixin = applib.mixins.FormMixin,
     q = lib.q,
     BasicModifier = applib.BasicModifier,
     BRACKET_END = /\[\]$/;
 
-  function possiblyBuildRegExp (obj, val, name) {
-    if (name === 'regex') {
-      if (lib.isString(val)) {
-        obj[name] = new RegExp(val);
-      }
-      if (val && 'object' === typeof val && 'string' in val && 'flags' in val && lib.isString(val.string)) {
-        obj[name] = new RegExp(val.string, val.flags);
-      }
-    }
-  }
-
-  function possiblyBuildRegExps1 (val, name) {
-    if ('object' !== typeof val) {
-      return;
-    }
-    lib.traverseShallow(val, possiblyBuildRegExp.bind(null, val));
-    val = null;
-  }
-
-  function possiblyBuildRegExps (obj) {
-    if (!obj) {
-      return;
-    }
-    lib.traverseShallow(obj, possiblyBuildRegExps1);
-    obj = null;
-  }
-
   function AngularFormLogic(id, options) {
     BasicAngularElement.call(this, id, options);
-    this.$form = null;
-    this.submit = new lib.HookCollection();
-    this.partialSubmit = new lib.HookCollection();
-    this.valid = null;
+    FormMixin.call(this, id, options);
     this._valid_l = null;
-    this.validfields = {}; 
     this._validfields_l = {};
-    this._default_values = {};
-    this.change = new lib.HookCollection();
-    this.initial = options ? options.initial : null;
-    this.ftion_status = null;
-    this.progress = null;
-    this.array_keys = options ? options.array_keys : null;
-    possiblyBuildRegExps(this.getConfigVal('validation'));
   }
 
   lib.inherit (AngularFormLogic, BasicAngularElement);
+  FormMixin.addMethods(BasicAngularElement);
   AngularFormLogic.prototype.__cleanUp = function () {
-    this.progress = null;
-    this.ftion_status = null;
-    this.array_keys = null;
-    this.initial = null;
-    this.change.destroy();
-    this.change = null;
-    this._default_values = null;
     lib.traverseShallow(this._validfields_l, this._unlisten.bind(this));
-    this.validfields = null;
-    this.$form = null;
     if (this._valid_l) this._valid_l.destroy();
     this._valid_l = null;
-    this.partialSubmit.destroy();
-    this.partialSubmit = null;
-
-    this.submit.destroy();
-    this.submit = null;
-    this.valid = false;
+    FormMixin.prototype.destroy.call(this);
     BasicAngularElement.prototype.__cleanUp.call(this);
   };
 
   AngularFormLogic.prototype.set_ftion_status = function (val) {
-    var was_active = false;
-    if (val) {
-      if (this.ftion_status) {
-        was_active = this.ftion_status.working && val.result;
-      }else{
-        if (val.result){
-          was_active = true;
-        }
-      }
-    }
-
-
-    this.ftion_status = val;
-    var closeOnSuccess = this.getConfigVal('closeOnSuccess');
-    //console.log('was active?', was_active, closeOnSuccess);
-
-    if (this.isScopeReady() && was_active) {
-      if (true === closeOnSuccess || lib.isNumber(closeOnSuccess)){
-        this.doCloseOnSuccess(closeOnSuccess);
-      }
-      if (this.getConfigVal('clearOnSuccess')){
-        this.set('data', null);
-      }
-    }
-
-    this.executeOnScopeIfReady ('set', ['ftion_status', val]);
+    var ret = FormMixin.prototype.set_ftion_status.call(this, val);
+    this.executeOnScope ('set', ['ftion_status', val]);
   };
 
   AngularFormLogic.prototype.doCloseOnSuccess = function (val) {
-    if (true === val) val = 0;
-
-    this.executeOnScopeIfReady ('set', ['disabled', false]);
-    lib.runNext (this.set.bind(this, 'actual', false), val);
+    FormMixin.prototype.doCloseOnSuccess.call(this, val);
+    this.executeOnScope ('set', ['disabled', false]);
   };
 
   AngularFormLogic.prototype.set_progress = function (val) {
-    this.progress = val;
-    this.executeOnScopeIfReady ('set', ['progress', val]);
+    var ret = FormMixin.prototype.set_progress.call(this, val);
+    if (ret) {
+      this.executeOnScope ('set', ['progress', val]);
+    }
+    return ret;
   };
 
   AngularFormLogic.prototype._unlisten = function (f) {
@@ -124,29 +51,18 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
 
   AngularFormLogic.prototype.set_actual = function (val) {
     BasicAngularElement.prototype.set_actual.call(this, val);
-    //reset ftion_status and progress on every actual change
-    this.set('ftion_status', null);
-    this.set('progress', null);
-    this.executeOnScopeIfReady ('set', ['disabled', !val]);
+    FormMixin.prototype.set_actual.call(this, val);
+    this.executeOnScope ('set', ['disabled', !val]);
+    return true;
   };
 
   AngularFormLogic.prototype.initialize = function () {
     BasicAngularElement.prototype.initialize.call(this);
+    FormMixin.prototype.initialize.call(this);
     this.$element.attr ({ 'data-allex-angular-form-logic': ''});
-
-
-    this.$form = this.$element.is('form') ? this.$element : this.$element.find('form');
-
-    this.$form.attr({
-      'name': this.get('id'), ///add a name to form, to make angular validation work ....
-      'novalidate': ''     ///prevent browser validation ...
-    });
-    this.$form.removeAttr ('action'); //in order to avoid some refresh or so ...
-    this.$form.find('[name]').toArray().forEach (this._prepareForAngular.bind(this));
-    this.appendHiddenFields(this.getConfigVal('hidden_fields'));
   };
 
-  AngularFormLogic.prototype._prepareForAngular = function (el) {
+  AngularFormLogic.prototype._prepareField = function (el) {
     var $el = jQuery(el),
       name = $el.attr('name'),
       model_name = this.getModelName(name);
@@ -177,61 +93,8 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
     this._validfields_l[model_name] = null;
   };
 
-  AngularFormLogic.prototype.appendHiddenFields = function (fields) {
-    if (!fields || !fields.length) return;
-    fields.forEach (this._appendHiddenField.bind(this));
-  };
-
-  AngularFormLogic.prototype._appendHiddenField = function (fieldname_or_record) {
-    var name = lib.isString(fieldname_or_record) ? fieldname_or_record : fieldname_or_record.name,
-      attrs = {
-        name: name,
-        type: 'hidden',
-      },
-      is_hash = !lib.isString(fieldname_or_record);
-
-    if (is_hash){
-      attrs.required = fieldname_or_record.required ? '' : undefined;
-      if ('value' in fieldname_or_record) {
-        this._default_values[name] = fieldname_or_record.value;
-      }
-    }
-
-    this.findByFieldName(name).remove(); ///remove existing elements whatever they are ...
-    var $el = $('<input>').attr(attrs);
-    this._prepareForAngular($el);
-    this.$form.append ($el);
-    //this.$form.append($('<span> {{_ctrl.data.'+name+' | json}}</span>'));
-  };
-
-  AngularFormLogic.prototype.findByFieldName = function (name) {
-    return this.$form.find ('[name="'+name+'"]');
-  };
-
-  AngularFormLogic.prototype.toArray = function (keys) {
-    return lib.hashToArray(keys, this.get('data'));
-  };
-
-  AngularFormLogic.prototype.fireSubmit = function () {
-    this.submit.fire(this.dataForFireSubmit());
-  };
-
-  AngularFormLogic.prototype.dataForFireSubmit = function () {
-    return this.array_keys ? this.toArray(this.array_keys) : this.get('data');
-  };
-
-  AngularFormLogic.prototype.firePartialSubmit = function (field) {
-    if (!this.isFieldValid(field)) return;
-    this.partialSubmit.fire (field, this.data ? this.data[field] : null);
-  };
-
-  function setDefaultVals (data, value, key) {
-    if (key in data) return;
-    data[key] = value;
-  }
-
   AngularFormLogic.prototype.set_data = function (data) {
-    lib.traverseShallow (this._default_values, setDefaultVals.bind(null, data));
+    FormMixin.prototype.fillObjectWithDefaultValues(data);
     return BasicAngularElement.prototype.set_data.call(this, data);
   };
 
@@ -271,28 +134,6 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
     if (this.initial) lib.runNext(this._setInitial.bind(this));
   };
 
-  AngularFormLogic.prototype._onChanged = function (data, field, name) {
-    this.changed.fire('data', data);
-    this.change.fire(field, name);
-  };
-
-  AngularFormLogic.prototype._setInitial = function (ext) {
-
-    this.set('data', lib.extend ({}, this.initial, ext));
-    for (var i in this.initial) {
-      this.change.fire(i, this.initial[i]);
-    }
-  };
-
-  AngularFormLogic.prototype.resetElement = function (ext) {
-    BasicAngularElement.prototype.resetElement.call(this, ext);
-    this.resetForm(ext);
-  };
-
-  AngularFormLogic.prototype.resetForm = function (ext) {
-    this._setInitial(ext);
-  };
-
   AngularFormLogic.prototype._watchForValid = function (scope, formname, val, key) {
     this._validfields_l[key] = scope.$watch('_ctrl.data.'+key, this._updateError.bind(this, scope, formname, key));
   };
@@ -310,41 +151,12 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
     return this.$scopectrl && this.$scopectrl.scope[this.get('id')] ? this.$scopectrl.scope[this.get('id')][field].$valid : false;
   };
 
-  AngularFormLogic.prototype.set_valid = function (val) {
-    if (this.valid === val) return false;
-    //console.log('AngularFormLogic ',this.id,' will say valid', val);
-    this.valid = val;
-    return true;
-  };
-
-  AngularFormLogic.prototype.empty = function () {
-    this.set('data', {});
-  };
-
   AngularFormLogic.prototype.setInputEnabled = function (fieldname, enabled) {
-    var $el = this.$form.find('[name="'+fieldname+'"]');
-    $el.attr('data-ng-disabled', enabled ? "false" : "true");
-    if (enabled) {
-      $el.removeAttr('disabled');
-    }else{
-      $el.attr('disabled', 'disabled');
+    var $el = FormMixin.prototype.setInputEnabled.call(this, fieldname, enabled);
+    if ($el) {
+      $el.attr('data-ng-disabled', enabled ? "false" : "true");
     }
-    this.executeOnScopeIfReady ('$apply');
-  };
-
-  AngularFormLogic.prototype.disableInput = function (fieldname) {
-    this.setInputEnabled(fieldname, false);
-  };
-
-  AngularFormLogic.prototype.enableInput = function (fieldname) {
-    this.setInputEnabled(fieldname, true);
-  };
-
-  AngularFormLogic.prototype.isFormValid = function () {
-    for (var i in this.validfields) {
-      if (!this.isFieldValid(i)) return false;
-    }
-    return true;
+    this.executeOnScope ('$apply');
   };
 
 
@@ -476,6 +288,8 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
     });
 
     switch (this.getConfigVal('actualon')){
+      case 'none':
+        break;
       case 'always' : {
         links.push ({
           source : '.:actual',
@@ -490,6 +304,29 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
           references : path+', .',
           handler : function (submit, form) {
             submit.set('actual', form.get('valid') && form.get('actual'));
+          }
+        });
+        break;
+      }
+    }
+
+    switch (this.getConfigVal('enabledon')){
+      case 'none':
+        break;
+      case 'always' : {
+        links.push ({
+          source : '.:actual',
+          target : path+':enabled',
+        });
+        break;
+      }
+      default : 
+      case 'valid' : {
+        logic.push ({
+          triggers : [ '.:valid, .:actual' ],
+          references : path+', .',
+          handler : function (submit, form) {
+            submit.set('enabled', form.get('valid') && form.get('actual'));
           }
         });
         break;

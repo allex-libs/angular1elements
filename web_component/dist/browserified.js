@@ -1,7 +1,7 @@
 (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
 ALLEX.execSuite.libRegistry.register('allex_angular1elementslib',require('./libindex')(ALLEX, ALLEX.execSuite.libRegistry.get('allex_applib'), ALLEX.execSuite.libRegistry.get('allex_jqueryelementslib')));
 
-},{"./libindex":9}],2:[function(require,module,exports){
+},{"./libindex":8}],2:[function(require,module,exports){
 function createBasicAngularController (execlib) {
   'use strict';
 
@@ -154,7 +154,7 @@ function createBasicAngularControllers (execlib, BasicAngularController) {
     AngularDataAwareController: AngularDataAwareController,
     BasicAngularElementController: BasicAngularElementController
   };
-}  //)(ALLEX, ALLEX.WEB_COMPONENTS.allex_web_webappcomponent, ALLEX.WEB_COMPONENTS.allex_applib, angular.module('allex_applib'));
+}
 
 module.exports = createBasicAngularControllers;
 
@@ -223,8 +223,7 @@ function createAngularElement (execlib, basicControllers, BasicAngularElement, a
       return ret;
     };
     applib.registerElementType('AngularFormElement', AngularFormElement);
-
-}  //)(ALLEX, ALLEX.WEB_COMPONENTS.allex_web_webappcomponent, ALLEX.WEB_COMPONENTS.allex_applib, angular.module('allex_applib'));
+}
 
 module.exports = createAngularElement;
 
@@ -235,35 +234,27 @@ function createBasic(allex, basicControllers, applib, jqueryelementslib) {
   var lib = allex.lib,
     BasicAngularController = lib.BasicAngularController,
     WebElement = applib.getElementType('WebElement'),
-    DataElementMixIn = jqueryelementslib.DataElementMixIn,
+    DataElementMixin = applib.mixins.DataElementMixin,
     q = lib.q;
 
     function BasicAngularElement (id, options) {
       WebElement.call(this, id, options);
-      DataElementMixIn.call(this);
+      DataElementMixin.call(this);
+      this.q = new lib.Fifo();
       this._addHook('onAngularReady');
       this.$scopectrl = null;
       if (options && options.initialData) this.set('data', options.initialData);
     }
     lib.inherit (BasicAngularElement, WebElement);
+    DataElementMixin.addMethods(BasicAngularElement);
     BasicAngularElement.prototype.__cleanUp = function () {
       this.$scopectrl = null;
-      DataElementMixIn.prototype.__cleanUp.call(this);
+      if (this.q) {
+        this.q.destroy();
+      }
+      this.q = null;
+      DataElementMixin.prototype.__cleanUp.call(this);
       WebElement.prototype.__cleanUp.call(this);
-    };
-
-    BasicAngularElement.prototype.updateHashField = function (name, value) {
-      var val = {};
-      val[name] = value;
-      this.set('data', lib.extend ({}, this.get('data'), val));
-    };
-
-    BasicAngularElement.prototype.updateArrayElement = function (index, value) {
-      var old = this.get('data'),
-        n = old ? old.slice() : [];
-
-      n[index] = value;
-      this.set('data', n);
     };
 
     BasicAngularElement.prototype.getArrayDataCopy = function () {
@@ -280,17 +271,32 @@ function createBasic(allex, basicControllers, applib, jqueryelementslib) {
       this._onScope(val);
       this._setRaise();
       this.fireHook('onAngularReady', [this]);
-      this.$scopectrl.set('data', this.get('data'));
+      this.q.drain(this.executeOnScopeer.bind(this));
+      //console.log('E, OD SAD MOZE NESTO DA SE RADI!', this.get('data'), this.data);
+      //this.$scopectrl.set('data', this.get('data'));
+      //this.$scopectrl.set('data', this.data);
     };
 
+    /*
     BasicAngularElement.prototype.isScopeReady = function () {
-      return !!this.$scopectrl;
+      var ret = !!this.$scopectrl;
+      if (!ret) {
+        console.warn(this.constructor.name, 'still has no $scopectrl');
+      }
+      return ret;
     };
+    */
 
-    BasicAngularElement.prototype.executeOnScopeIfReady = function (method, args) {
-      if (!this.$scopectrl) return;
+    BasicAngularElement.prototype.executeOnScopeer = function (qelem) {
+      this.executeOnScope(qelem[0], qelem[1]);
+    };
+    BasicAngularElement.prototype.executeOnScope = function (method, args) {
+      if (!this.$scopectrl) {
+        this.q.push([method, args]);
+        return;
+      }
       var fc = lib.readPropertyFromDotDelimitedString (this.$scopectrl, method, true);
-      return fc.val.apply(fc.ctx, args);
+      fc.val.apply(fc.ctx, args);
     };
 
     BasicAngularElement.prototype._setRaise = function () {
@@ -299,9 +305,9 @@ function createBasic(allex, basicControllers, applib, jqueryelementslib) {
     };
 
     BasicAngularElement.prototype.set_data = function (val) {
-      var ret = DataElementMixIn.prototype.set_data.call(this, val);
-      if (DataElementMixIn.prototype.hasDataChanged.call(this, ret)){
-        this.executeOnScopeIfReady ('set', ['data', this.data]);
+      var ret = DataElementMixin.prototype.set_data.call(this, val);
+      if (DataElementMixin.prototype.hasDataChanged.call(this, ret)){
+        this.executeOnScope ('set', ['data', this.data]);
       }
       return ret;
     };
@@ -328,434 +334,6 @@ function createBasic(allex, basicControllers, applib, jqueryelementslib) {
 module.exports = createBasic;
 
 },{}],6:[function(require,module,exports){
-function createAngularDataTable (allex, basicControllers, BasicAngularElement, ANGULAR_REQUIREMENTS, applib, jqueryelementslib, angular_module) {
-  'use strict';
-
-  var lib = allex.lib,
-    AngularDataAwareController = basicControllers.AngularDataAwareController,
-    DataElementMixIn = jqueryelementslib.DataElementMixIn,
-    CBMapable = lib.CBMapable,
-    q = lib.q;
-
-
-  function addDefaultHeaderCellFilter (defaultHeaderCellFilter, columnDef) {
-    if ('headerCellFilter' in columnDef) return;
-    columnDef.headerCellFilter = defaultHeaderCellFilter;
-  }
-
-  function prepareActionsTable(config) {
-    var ret = lib.extend({}, config.actions, {field : '-', enableFiltering : false});
-    addDefaultHeaderCellFilter (config.defaultHeaderCellFilter, ret);
-    return ret;
-  }
-
-  function AngularDataTable (id, options) {
-    BasicAngularElement.call(this, id, options);
-    this.afterEdit = new lib.HookCollection();
-    this.config.grid = lib.extend({}, AngularDataTable.DEFAULT_GRID_CONFIG, this.config.grid);
-    if (!this.config.grid.data) this.config.grid.data = '_ctrl.data';
-
-    if (this.config.defaultHeaderCellFilter) {
-      this.config.grid.columnDefs.forEach (addDefaultHeaderCellFilter.bind (null, this.config.defaultHeaderCellFilter));
-    }
-  }
-  lib.inherit(AngularDataTable, BasicAngularElement);
-
-  AngularDataTable.prototype.__cleanUp = function () {
-    this.afterEdit.destroy();
-    this.afterEdit = null;
-    BasicAngularElement.prototype.__cleanUp.call(this);
-  };
-
-  function checkIfEditable (item) {
-    return checkIfPropIsTrue ('enableCellEdit', item);
-  }
-
-  function checkIfResizable (item) {
-    return checkIfPropIsTrue ('enableColumnResizing', item);
-  }
-
-  function checkIfPropIsTrue (prop, item) {
-    if (item[prop]) return true;
-  }
-
-  function replaceTemplate (item, field) {
-    if (!item[field] || item[field].charAt(0) !== '#') return;
-    item[field] = jQuery('#references > '+item[field]).html();
-  }
-
-  AngularDataTable.prototype._replacePossibleTemplates = function (item) {
-    replaceTemplate(item, 'cellTemplate');
-    replaceTemplate (item, 'filterHeaderTemplate');
-  };
-
-  AngularDataTable.prototype.initialize = function () {
-    BasicAngularElement.prototype.initialize.call(this);
-
-    var editable = this.config.grid.enableCellEdit || lib.traverseConditionally (this.getColumnDefs(), checkIfEditable);
-    var resizable = this.config.grid.enableColumnResizing || lib.traverseConditionally (this.getColumnDefs(), checkIfResizable);
-    var noDataContent = this.getConfigVal('noDataContent');
-    var dataString = this.getConfigVal('grid.data');
-    this.getColumnDefs().forEach (this._replacePossibleTemplates.bind(this));
-
-    var $container = $('<div class="table_container" ng-show="'+dataString+'.length"></div>');
-    var $noDataContainer = $('<div class="no_data_container" ng-show = "!'+dataString+'.length"></div>');
-
-    $container.attr('ui-grid', '_ctrl.gridOptions');
-    $container.attr('ui-grid-auto-resize', '');
-
-    if (editable) {
-      $container.attr('ui-grid-edit','');
-    }
-
-    if (resizable) {
-      $container.attr('ui-grid-resize-columns', '');
-    }
-
-    //noDataContent
-    if (lib.isString(noDataContent)){
-      if (noDataContent[0] === '#'){ //id
-        $noDataContainer.append($('#references > ' + noDataContent).html());
-      }else{ //markup
-        $noDataContainer.append(noDataContent);
-      }
-    }
-    if (noDataContent === true){ //find markup on pre-defined place in references
-      $noDataContainer.append(this.findDomReference('nodata').html());
-    }
-
-    $container.addClass('grid');
-
-    this.$element.attr({'data-allex-angular-data-table': ''});
-    this.$element.append($container);
-    if (!!noDataContent){
-      this.$element.append($noDataContainer);
-    }
-    var $actions_template = this.findDomReference('actions'),
-      $actions = null,
-      wrapper = this.getConfigVal('actionsWrapper') ? $(this.getConfigVal('actionsWrapper')) : null,
-      $wrapper = wrapper ? $(wrapper) : null;
-
-    if ($wrapper) {
-      $actions = $actions_template.length ? $wrapper.append($actions_template) : null;
-    }else{
-      $actions = $actions_template.length ? $actions_template : null;
-    }
- 
-    if (!$actions) {
-      return;
-    }
-    var cd = lib.arryOperations.findElementWithProperty (this.config.grid.columnDefs, 'field', '-'),
-      actions = { displayName: $actions.attr('data-title') || 'Actions', cellTemplate: $actions.html()};
-    if (cd) {
-      if (!cd.displayName) cd.displayName = actions.displayName;
-      if (!cd.cellTemplate) cd.cellTemplate = actions.cellTemplate;
-    }else{
-      this.config.grid.columnDefs.unshift (lib.extend ({}, actions, prepareActionsTable(this.config)));
-    }
-  };
-
-  AngularDataTable.prototype.getApi = function () {
-    return this.$scopectrl ? this.$scopectrl.api : null;
-  };
-
-  AngularDataTable.prototype._onScope = function (_ctrl) {
-    var _cbmap = {
-      appendNewRow : this.appendNewRow.bind(this)
-    };
-
-    if (this.$element.find('.grid.table_container').attr('ui-grid-edit') === '') {
-      _cbmap.afterEdit = this.afterEdit.fire.bind(this.afterEdit);
-    }
-
-
-    _ctrl.set('_cbmap', _cbmap);
-    //patch realative stupid approach ....
-    this.config.grid.enableHorizontalScrollbar = this.config.grid.enableHorizontalScrollbar === false ? _ctrl.uiGridConstants.scrollbars.NEVER : _ctrl.uiGridConstants.scrollbars.ALWAYS;
-    this.config.grid.enableVerticalScrollbar = this.config.grid.enableVerticalScrollbar === false ? _ctrl.uiGridConstants.scrollbars.NEVER : _ctrl.uiGridConstants.scrollbars.ALWAYS;
-
-    this.config.grid.columnDefs.forEach (this._processFilters.bind(this, _ctrl));
-    _ctrl.set('gridOptions', this.config.grid);
-  };
-
-  function _processSingleFilter (FILTERS, filter_data) {
-    if (filter_data.type) {
-      filter_data.type = FILTERS[filter_data.type];
-    }
-
-    if (filter_data.condition && lib.isString(filter_data.condition)) {
-      filter_data.condition = FILTERS[filter_data.condition];
-    }
-  }
-
-  AngularDataTable.prototype._processFilters = function (_ctrl, coldef, index) {
-    var FILTERS = _ctrl.uiGridConstants.filter;
-
-    if (coldef.filter) {
-      _processSingleFilter (FILTERS,coldef.filter);
-      coldef.filters = [coldef.filter];
-      coldef.filter = null;
-      return;
-    }
-
-    if (coldef.filters) {
-      coldef.filters.forEach (_processSingleFilter.bind(null, FILTERS));
-      return;
-    }
-  };
-
-  AngularDataTable.prototype.set_data = function (data) {
-    var ret = BasicAngularElement.prototype.set_data.call(this, data);
-    if (false === ret) return;
-
-    this.executeOnScopeIfReady ('set', ['data', data]);
-    this.executeOnScopeIfReady ('api.core.refresh');
-  };
-
-  AngularDataTable.prototype.getCleanData = function () {
-    angular.copy(this.getTableData());
-  };
-
-  AngularDataTable.prototype.appendNewRow = function (current_length) {
-    var row = {};
-
-    if (this.getConfigVal('config.bSetNewRowProps')) {
-      ///TODO: uzmi iz grid options columnDefs i popuni row sa null ...
-    }
-
-    var f = this.getConfigVal('appendNewRow');
-    return f ? f(this, current_length, row) : row;
-  };
-
-  AngularDataTable.prototype.get_rows = function () {
-    return this.$scopectrl.api ? this.$scopectrl.api.grid.rows : null;
-  };
-
-  AngularDataTable.prototype.getElement = function (path) {
-    if ('$element' === path) return this.$element;
-    return BasicAngularElement.prototype.getElement.call(this, path);
-  };
-
-
-  AngularDataTable.prototype.set_row_count = function (rc) {
-    return this.executeOnScopeIfReady ('set', ['row_count', rc]);
-  };
-
-  AngularDataTable.prototype.get_row_count = function () {
-    return this.executeOnScopeIfReady ('get', ['row_count']);
-  };
-
-  AngularDataTable.prototype.getColumnDefs = function () {
-    return this.getConfigVal('grid.columnDefs');
-  };
-
-  AngularDataTable.prototype.$apply = function () {
-    BasicAngularElement.prototype.$apply.call(this);
-    this.executeOnScopeIfReady ('api.core.refresh');
-  };
-
-  AngularDataTable.prototype.removeAllColumns = function () {
-    if (this.isScopeReady()) {
-      this.config.grid.columnDefs.splice(0, this.config.grid.columnDefs.length);
-      this.refreshGrid();
-    }else{
-      var cd = this.getColumnDefs();
-      cd.splice (0, cd.length);
-    }
-  };
-
-  AngularDataTable.prototype.appendColumn = function (definition) {
-    if (this.isScopeReady()){
-      this.config.grid.columnDefs.push (definition);
-      this.refreshGrid();
-    }else{
-      this.getColumnDefs().push(definition);
-    }
-  };
-
-  AngularDataTable.prototype.set_column_defs = function (defs) {
-    if (this.isScopeReady()) {
-      this.config.grid.columnDefs = defs;
-      this.refreshGrid();
-    }else{
-      var cd = this.getColumnDefs();
-      cd.splice (0, cd.length);
-      Array.prototype.push.apply(cd, defs);
-    }
-  };
-
-  AngularDataTable.prototype.updateColumnDef = function (name, coldef) {
-    if (this.isScopeReady()){
-      var column = this.getColumnDef(name);
-      column.colDef = coldef;
-      this.refreshGrid();
-      return;
-    }
-
-    var cd = this.getColumnDef (name), all = this.getColumnDefs(), index = all.indexOf(cd);
-    if (index < 0) throw new Error ('No column definition for name ', name);
-    all[index] = coldef;
-  };
-
-  AngularDataTable.prototype.getColumnDef = function (name) {
-    if (this.isScopeReady() && this.getApi().grid.columns.length){
-      var column = this.getApi().grid.getColumn (name);
-      return column ? column.colDef : null;
-    }
-    return lib.arryOperations.findElementWithProperty (this.getColumnDefs(), 'name', name);
-  };
-
-  AngularDataTable.prototype.refreshGrid = function () {
-    this.executeOnScopeIfReady ('api.grid.refresh');
-  };
-
-  function extractEntity (item) {
-    return item.entity;
-  }
-
-  AngularDataTable.prototype.getTableData = function () {
-    return this.executeOnScopeIfReady('getActualData');
-  };
-
-  AngularDataTable.prototype.getRowIndexUponEntity = function (entity_data) {
-    var rows = this.getApi().grid.rows;
-    for (var i = 0; i < rows.length; i++) {
-      if (rows[i].entity.$$hashKey === entity_data.$$hashKey) return i;
-    }
-    return -1;
-  };
-
-  AngularDataTable.prototype.removeRow = function (entity_data) {
-    var data = this.getTableData(),
-      index = this.getRowIndexUponEntity (entity_data);
-    if (index < 0) return;
-
-    data.splice(index, 1);
-    this.refreshGrid();
-  };
-
-  AngularDataTable.isSpecialColumnName = function (key) {
-    return '-' === key;
-  };
-
-  AngularDataTable.DEFAULT_GRID_CONFIG = null;
-
-  applib.registerElementType('AngularDataTable', AngularDataTable);
-  ANGULAR_REQUIREMENTS.add ('AngularDataTable', ['ui.grid','ui.grid.edit', 'ui.grid.autoResize', 'ui.grid.resizeColumns']);
-
-  //This is angular part of code ... //and what about this ... raise ....
-  function AllexAngularDataTableController ($scope, $parse, uiGridConstants) {
-    AngularDataAwareController.call(this, $scope);
-    CBMapable.call(this);
-    this.uiGridConstants = uiGridConstants;
-    this.data = [];
-    this.gridOptions = null;
-    this.api = null;
-
-    this._listenToEditEvents = false;
-  }
-  lib.inherit (AllexAngularDataTableController, AngularDataAwareController);
-  CBMapable.addMethods (AllexAngularDataTableController);
-
-
-  AllexAngularDataTableController.prototype.__cleanUp = function () {
-    this.uiGridConstants = null;
-    this.rowCountChanged.destroy();
-    this.rowCountChanged = null;
-
-    this.editDone = new lib.HookCollection();
-
-    this.gridOptions = null;
-    this.data = null;
-    this.api = null;
-    CBMapable.prototype.__cleanUp.call(this);
-    AngularDataAwareController.prototype.__cleanUp.call(this);
-  };
-
-  AllexAngularDataTableController.prototype.set_gridOptions = function (val) {
-    if (this.gridOptions === val) {
-      return false;
-    }
-    this.api = null;
-
-    ///TODO: check if equal ...
-    this.gridOptions = val;
-    if (!this.gridOptions) {
-      return true;
-    }
-
-    this.gridOptions.onRegisterApi = this.set.bind(this, 'api');
-  };
-
-  AllexAngularDataTableController.prototype.set_api = function (api) {
-    if (this.api === api) return;
-    this.api = api;
-    if (this._cbmap && this._cbmap.afterEdit) {
-      this.api.edit.on.afterCellEdit(this.scope, this._onAfterEdit.bind(this));
-    }
-  };
-
-  AllexAngularDataTableController.prototype._onAfterEdit = function (rowEntity, colDef, newValue, oldValue) {
-    if (oldValue === newValue) return;
-
-    this.call_cb('afterEdit', [{
-      newValue : newValue,
-      oldValue : oldValue,
-      row : rowEntity,
-      field : colDef.name
-    }]);
-  };
-
-  function doReturn (what) { return what; }
-
-  AllexAngularDataTableController.prototype.set_row_count = function (val) {
-
-    var rows = this.getActualData();
-    if (!lib.isArray(rows)) return false; ///TODO ...
-
-    var rc = rows.length,
-      new_row = null;
-
-    if (val === rc) return false;
-
-    if (val < rc) {
-      rows.splice (val, rc-val);
-    }else{
-      while (rows.length < val) {
-        new_row = this.call_cb('appendNewRow', [rows.length]);
-        rows.push (new_row);
-      }
-    }
-    return true;
-  };
-
-  AllexAngularDataTableController.prototype.getActualData = function (){
-    return (lib.isString(this.gridOptions.data)) ? this.scope.$eval(this.gridOptions.data) : this.gridOptions.data;
-  };
-
-  AllexAngularDataTableController.prototype.get_row_count = function () {
-    return this.getActualData().length;
-  };
-
-  angular_module.controller('allexAngularDataTableController', ['$scope', '$parse', 'uiGridConstants', function ($scope, $parse, uiGridConstants) {
-    new AllexAngularDataTableController($scope, $parse, uiGridConstants);
-  }]);
-
-  angular_module.directive ('allexAngularDataTable', [function () {
-    return {
-      restrict : 'A',
-      scope: true,
-      controller: 'allexAngularDataTableController',
-      link : function ($scope, $el, $attribs) {
-        $scope._ctrl.elementReady ($el);
-      }
-    };
-  }]);
-}
-
-module.exports = createAngularDataTable;
-
-},{}],7:[function(require,module,exports){
 function createAngularFormLogic (execlib, basicControllers, BasicAngularElement, applib, angular_module) {
   'use strict';
 
@@ -763,117 +341,44 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
 
   var lib = execlib.lib,
     BasicAngularElementController = basicControllers.BasicAngularElementController,
+    FormMixin = applib.mixins.FormMixin,
     q = lib.q,
     BasicModifier = applib.BasicModifier,
     BRACKET_END = /\[\]$/;
 
-  function possiblyBuildRegExp (obj, val, name) {
-    if (name === 'regex') {
-      if (lib.isString(val)) {
-        obj[name] = new RegExp(val);
-      }
-      if (val && 'object' === typeof val && 'string' in val && 'flags' in val && lib.isString(val.string)) {
-        obj[name] = new RegExp(val.string, val.flags);
-      }
-    }
-  }
-
-  function possiblyBuildRegExps1 (val, name) {
-    if ('object' !== typeof val) {
-      return;
-    }
-    lib.traverseShallow(val, possiblyBuildRegExp.bind(null, val));
-    val = null;
-  }
-
-  function possiblyBuildRegExps (obj) {
-    if (!obj) {
-      return;
-    }
-    lib.traverseShallow(obj, possiblyBuildRegExps1);
-    obj = null;
-  }
-
   function AngularFormLogic(id, options) {
     BasicAngularElement.call(this, id, options);
-    this.$form = null;
-    this.submit = new lib.HookCollection();
-    this.partialSubmit = new lib.HookCollection();
-    this.valid = null;
+    FormMixin.call(this, id, options);
     this._valid_l = null;
-    this.validfields = {}; 
     this._validfields_l = {};
-    this._default_values = {};
-    this.change = new lib.HookCollection();
-    this.initial = options ? options.initial : null;
-    this.ftion_status = null;
-    this.progress = null;
-    this.array_keys = options ? options.array_keys : null;
-    possiblyBuildRegExps(this.getConfigVal('validation'));
   }
 
   lib.inherit (AngularFormLogic, BasicAngularElement);
+  FormMixin.addMethods(BasicAngularElement);
   AngularFormLogic.prototype.__cleanUp = function () {
-    this.progress = null;
-    this.ftion_status = null;
-    this.array_keys = null;
-    this.initial = null;
-    this.change.destroy();
-    this.change = null;
-    this._default_values = null;
     lib.traverseShallow(this._validfields_l, this._unlisten.bind(this));
-    this.validfields = null;
-    this.$form = null;
     if (this._valid_l) this._valid_l.destroy();
     this._valid_l = null;
-    this.partialSubmit.destroy();
-    this.partialSubmit = null;
-
-    this.submit.destroy();
-    this.submit = null;
-    this.valid = false;
+    FormMixin.prototype.destroy.call(this);
     BasicAngularElement.prototype.__cleanUp.call(this);
   };
 
   AngularFormLogic.prototype.set_ftion_status = function (val) {
-    var was_active = false;
-    if (val) {
-      if (this.ftion_status) {
-        was_active = this.ftion_status.working && val.result;
-      }else{
-        if (val.result){
-          was_active = true;
-        }
-      }
-    }
-
-
-    this.ftion_status = val;
-    var closeOnSuccess = this.getConfigVal('closeOnSuccess');
-    //console.log('was active?', was_active, closeOnSuccess);
-
-    if (this.isScopeReady() && was_active) {
-      if (true === closeOnSuccess || lib.isNumber(closeOnSuccess)){
-        this.doCloseOnSuccess(closeOnSuccess);
-      }
-      if (this.getConfigVal('clearOnSuccess')){
-        this.set('data', null);
-      }
-    }
-
-    this.executeOnScopeIfReady ('set', ['ftion_status', val]);
+    var ret = FormMixin.prototype.set_ftion_status.call(this, val);
+    this.executeOnScope ('set', ['ftion_status', val]);
   };
 
   AngularFormLogic.prototype.doCloseOnSuccess = function (val) {
-    if (true === val) val = 0;
-
-    this.executeOnScopeIfReady ('set', ['disabled', false]);
-    lib.runNext (this.set.bind(this, 'actual', false), val);
+    FormMixin.prototype.doCloseOnSuccess.call(this, val);
+    this.executeOnScope ('set', ['disabled', false]);
   };
 
   AngularFormLogic.prototype.set_progress = function (val) {
-    this.progress = val;
-    this.executeOnScopeIfReady ('set', ['progress', val]);
+    var ret = FormMixin.prototype.set_progress.call(this, val);
+    if (ret) {
+      this.executeOnScope ('set', ['progress', val]);
+    }
+    return ret;
   };
 
   AngularFormLogic.prototype._unlisten = function (f) {
@@ -882,29 +387,18 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
 
   AngularFormLogic.prototype.set_actual = function (val) {
     BasicAngularElement.prototype.set_actual.call(this, val);
-    //reset ftion_status and progress on every actual change
-    this.set('ftion_status', null);
-    this.set('progress', null);
-    this.executeOnScopeIfReady ('set', ['disabled', !val]);
+    FormMixin.prototype.set_actual.call(this, val);
+    this.executeOnScope ('set', ['disabled', !val]);
+    return true;
   };
 
   AngularFormLogic.prototype.initialize = function () {
     BasicAngularElement.prototype.initialize.call(this);
+    FormMixin.prototype.initialize.call(this);
     this.$element.attr ({ 'data-allex-angular-form-logic': ''});
-
-
-    this.$form = this.$element.is('form') ? this.$element : this.$element.find('form');
-
-    this.$form.attr({
-      'name': this.get('id'), ///add a name to form, to make angular validation work ....
-      'novalidate': ''     ///prevent browser validation ...
-    });
-    this.$form.removeAttr ('action'); //in order to avoid some refresh or so ...
-    this.$form.find('[name]').toArray().forEach (this._prepareForAngular.bind(this));
-    this.appendHiddenFields(this.getConfigVal('hidden_fields'));
   };
 
-  AngularFormLogic.prototype._prepareForAngular = function (el) {
+  AngularFormLogic.prototype._prepareField = function (el) {
     var $el = jQuery(el),
       name = $el.attr('name'),
       model_name = this.getModelName(name);
@@ -935,61 +429,8 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
     this._validfields_l[model_name] = null;
   };
 
-  AngularFormLogic.prototype.appendHiddenFields = function (fields) {
-    if (!fields || !fields.length) return;
-    fields.forEach (this._appendHiddenField.bind(this));
-  };
-
-  AngularFormLogic.prototype._appendHiddenField = function (fieldname_or_record) {
-    var name = lib.isString(fieldname_or_record) ? fieldname_or_record : fieldname_or_record.name,
-      attrs = {
-        name: name,
-        type: 'hidden',
-      },
-      is_hash = !lib.isString(fieldname_or_record);
-
-    if (is_hash){
-      attrs.required = fieldname_or_record.required ? '' : undefined;
-      if ('value' in fieldname_or_record) {
-        this._default_values[name] = fieldname_or_record.value;
-      }
-    }
-
-    this.findByFieldName(name).remove(); ///remove existing elements whatever they are ...
-    var $el = $('<input>').attr(attrs);
-    this._prepareForAngular($el);
-    this.$form.append ($el);
-    //this.$form.append($('<span> {{_ctrl.data.'+name+' | json}}</span>'));
-  };
-
-  AngularFormLogic.prototype.findByFieldName = function (name) {
-    return this.$form.find ('[name="'+name+'"]');
-  };
-
-  AngularFormLogic.prototype.toArray = function (keys) {
-    return lib.hashToArray(keys, this.get('data'));
-  };
-
-  AngularFormLogic.prototype.fireSubmit = function () {
-    this.submit.fire(this.dataForFireSubmit());
-  };
-
-  AngularFormLogic.prototype.dataForFireSubmit = function () {
-    return this.array_keys ? this.toArray(this.array_keys) : this.get('data');
-  };
-
-  AngularFormLogic.prototype.firePartialSubmit = function (field) {
-    if (!this.isFieldValid(field)) return;
-    this.partialSubmit.fire (field, this.data ? this.data[field] : null);
-  };
-
-  function setDefaultVals (data, value, key) {
-    if (key in data) return;
-    data[key] = value;
-  }
-
   AngularFormLogic.prototype.set_data = function (data) {
-    lib.traverseShallow (this._default_values, setDefaultVals.bind(null, data));
+    FormMixin.prototype.fillObjectWithDefaultValues(data);
     return BasicAngularElement.prototype.set_data.call(this, data);
   };
 
@@ -1029,28 +470,6 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
     if (this.initial) lib.runNext(this._setInitial.bind(this));
   };
 
-  AngularFormLogic.prototype._onChanged = function (data, field, name) {
-    this.changed.fire('data', data);
-    this.change.fire(field, name);
-  };
-
-  AngularFormLogic.prototype._setInitial = function (ext) {
-
-    this.set('data', lib.extend ({}, this.initial, ext));
-    for (var i in this.initial) {
-      this.change.fire(i, this.initial[i]);
-    }
-  };
-
-  AngularFormLogic.prototype.resetElement = function (ext) {
-    BasicAngularElement.prototype.resetElement.call(this, ext);
-    this.resetForm(ext);
-  };
-
-  AngularFormLogic.prototype.resetForm = function (ext) {
-    this._setInitial(ext);
-  };
-
   AngularFormLogic.prototype._watchForValid = function (scope, formname, val, key) {
     this._validfields_l[key] = scope.$watch('_ctrl.data.'+key, this._updateError.bind(this, scope, formname, key));
   };
@@ -1068,41 +487,12 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
     return this.$scopectrl && this.$scopectrl.scope[this.get('id')] ? this.$scopectrl.scope[this.get('id')][field].$valid : false;
   };
 
-  AngularFormLogic.prototype.set_valid = function (val) {
-    if (this.valid === val) return false;
-    //console.log('AngularFormLogic ',this.id,' will say valid', val);
-    this.valid = val;
-    return true;
-  };
-
-  AngularFormLogic.prototype.empty = function () {
-    this.set('data', {});
-  };
-
   AngularFormLogic.prototype.setInputEnabled = function (fieldname, enabled) {
-    var $el = this.$form.find('[name="'+fieldname+'"]');
-    $el.attr('data-ng-disabled', enabled ? "false" : "true");
-    if (enabled) {
-      $el.removeAttr('disabled');
-    }else{
-      $el.attr('disabled', 'disabled');
+    var $el = FormMixin.prototype.setInputEnabled.call(this, fieldname, enabled);
+    if ($el) {
+      $el.attr('data-ng-disabled', enabled ? "false" : "true");
     }
-    this.executeOnScopeIfReady ('$apply');
-  };
-
-  AngularFormLogic.prototype.disableInput = function (fieldname) {
-    this.setInputEnabled(fieldname, false);
-  };
-
-  AngularFormLogic.prototype.enableInput = function (fieldname) {
-    this.setInputEnabled(fieldname, true);
-  };
-
-  AngularFormLogic.prototype.isFormValid = function () {
-    for (var i in this.validfields) {
-      if (!this.isFieldValid(i)) return false;
-    }
-    return true;
+    this.executeOnScope ('$apply');
   };
 
 
@@ -1234,6 +624,8 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
     });
 
     switch (this.getConfigVal('actualon')){
+      case 'none':
+        break;
       case 'always' : {
         links.push ({
           source : '.:actual',
@@ -1248,6 +640,29 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
           references : path+', .',
           handler : function (submit, form) {
             submit.set('actual', form.get('valid') && form.get('actual'));
+          }
+        });
+        break;
+      }
+    }
+
+    switch (this.getConfigVal('enabledon')){
+      case 'none':
+        break;
+      case 'always' : {
+        links.push ({
+          source : '.:actual',
+          target : path+':enabled',
+        });
+        break;
+      }
+      default : 
+      case 'valid' : {
+        logic.push ({
+          triggers : [ '.:valid, .:actual' ],
+          references : path+', .',
+          handler : function (submit, form) {
+            submit.set('enabled', form.get('valid') && form.get('actual'));
           }
         });
         break;
@@ -1413,7 +828,7 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
 
 module.exports = createAngularFormLogic;
 
-},{}],8:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 function createAngularNotificationElement (allex, basicControllers, BasicAngularElement, applib, angular_module) {
   'use strict';
   var lib = allex.lib,
@@ -1656,7 +1071,7 @@ function createAngularNotificationElement (allex, basicControllers, BasicAngular
 
 module.exports = createAngularNotificationElement;
 
-},{}],9:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 function createLib (execlib, applib, jqueryelementslib) {
   'use strict';
 
@@ -1670,10 +1085,8 @@ function createLib (execlib, applib, jqueryelementslib) {
   require('./resources/bootstrappercreator')(execlib, applib, ANGULAR_REQUIREMENTS);
   require('./elements/angularcreator')(execlib, basicControllers, BasicAngularElement, applib, angular_module);
   require('./elements/formlogiccreator')(execlib, basicControllers, BasicAngularElement, applib, angular_module);
-  require('./elements/datatablecreator')(execlib, basicControllers, BasicAngularElement, ANGULAR_REQUIREMENTS, applib, jqueryelementslib, angular_module);
   require('./elements/notificationcreator')(execlib, basicControllers, BasicAngularElement, applib, angular_module);
   require('./modifiers/timeintervalcreator')(execlib, applib);
-  require('./modifiers/datatableautoappendrowcreator')(execlib, applib);
   require('./preprocessors/notificatorcreator')(execlib, applib, jqueryelementslib);
   require('./preprocessors/angularcreator')(execlib, applib, ANGULAR_REQUIREMENTS);
   require('./preprocessors/notificationfromfunctioncreator')(execlib, applib);
@@ -1681,152 +1094,15 @@ function createLib (execlib, applib, jqueryelementslib) {
   return {
     ANGULAR_REQUIREMENTS: ANGULAR_REQUIREMENTS,
     BasicAngularElement: BasicAngularElement,
-    BasicAngularController: BasicAngularController
+    BasicAngularController: BasicAngularController,
+    BasicAngularElementController: basicControllers.BasicAngularElementController,
+    AngularDataAwareController: basicControllers.AngularDataAwareController
   };
 }
 
 module.exports = createLib;
 
-},{"./controllers/basiccreator":2,"./controllers/basicscreator":3,"./elements/angularcreator":4,"./elements/basiccreator":5,"./elements/datatablecreator":6,"./elements/formlogiccreator":7,"./elements/notificationcreator":8,"./modifiers/datatableautoappendrowcreator":10,"./modifiers/timeintervalcreator":11,"./preprocessors/angularcreator":12,"./preprocessors/notificationfromfunctioncreator":13,"./preprocessors/notificatorcreator":14,"./resources/bootstrappercreator":15}],10:[function(require,module,exports){
-function createAngularDataTableAutoAppendRowModifier (allex, applib) {
-  'use strict';
-
-  var lib = allex.lib,
-    BasicModifier = applib.BasicModifier,
-    AngularDataTable = applib.getElementType('AngularDataTable');
-
-
-  function RowManipulator (modifier) {
-    this.modifier = modifier;
-  }
-
-  RowManipulator.prototype.destroy = function () {
-    this.modifier = null;
-  };
-
-  RowManipulator.prototype.isEmpty = function (entity) {
-    return modifier.isEmpty(entity);
-  };
-
-  function AngularDataTableAutoAppendRow (options) {
-    BasicModifier.call(this, options);
-  }
-  lib.inherit (AngularDataTableAutoAppendRow, BasicModifier);
-  AngularDataTableAutoAppendRow.prototype.destroy = function () {
-    BasicModifier.prototype.destroy.call(this);
-  };
-
-  AngularDataTableAutoAppendRow.prototype.ALLOWED_ON = function () {
-    return 'AngularDataTable';
-  };
-
-  AngularDataTableAutoAppendRow.prototype.DEFAULT_CONFIG = function () {
-    return {
-      eventName : 'removeRow',
-      isEmpty : function (obj) {
-        for (var i in obj) {
-          if (lib.isVal(obj[i])) return false;
-        }
-
-        return true;
-      },
-      isFull : function (obj) {
-        for (var i in obj) {
-          if (!lib.isVal(obj[i])) return false;
-        }
-        return true;
-      }
-    };
-  };
-
-  AngularDataTableAutoAppendRow.prototype._addNewRow = function (options) {
-    var ret = {
-    }, item, key;
-
-    for (var i in options.grid.columnDefs) {
-      item = options.grid.columnDefs[i];
-      key = item.field || item.name;
-
-      if (AngularDataTable.isSpecialColumnName(key)) continue;
-      ret[key] = null;
-    }
-
-    return ret;
-  };
-
-  AngularDataTableAutoAppendRow.prototype.doProcess = function (name, options, links, logic, resources) {
-    var eventName = this.getConfigVal('eventName');
-
-    if (!this.getConfigVal('newRow')) {
-      this.setConfigVal ('newRow', this._addNewRow.bind(this, options), true);
-    }
-
-    if (!lib.isFunction (this.getConfigVal('newRow'))) throw new Error('newRow is not a function');
-    if (!lib.isFunction (this.getConfigVal('isEmpty'))) throw new Error('isEmptyRow must be a function');
-    if (!lib.isFunction (this.getConfigVal('isFull'))) throw new Error('isFull must be a function');
-
-    options.appendNewRow = this.getConfigVal ('newRow');
-    if (!options.helperObj) {
-      options.helperObj = {};
-    }
-    options.helperObj.autoappend = new RowManipulator(this);
-
-    var ret = [{
-      triggers : '.!afterEdit',
-      references : '.',
-      handler : this._onAfterEdit.bind(this, this.getConfigVal('isEmpty'), this.getConfigVal('isFull'))
-    },
-    {
-      triggers : '.$element!'+eventName,
-      references : '.',
-      handler : this._onRemoveRequested.bind(this)
-    },{
-      triggers : '.:data',
-      references : '.',
-      handler : this._onData.bind(this, this.getConfigVal('isEmpty'), this.getConfigVal('isFull'))
-    }];
-
-    Array.prototype.push.apply (logic, ret);
-  };
-
-  AngularDataTableAutoAppendRow.prototype._onData = function (isEmpty, isFull, Table, data) {
-    ///TODO: here is a potential problem : once data is null this wouldn't append special row ... might be a problem ...
-    if (lib.isNull(data)) return;
-    this._doAppend (isEmpty, isFull, Table);
-  };
-
-  AngularDataTableAutoAppendRow.prototype.isEmptyRow = function (entity, isEmpty) {
-    return isEmpty(entity);
-  };
-
-  AngularDataTableAutoAppendRow.prototype._doAppend = function (isEmpty, isFull, table) {
-    var data = table.getTableData(),
-      last = data[data.length-1];
-
-    if (data.length === 0) {
-      table.set('row_count', 1);
-      return;
-    }
-    if (isEmpty (last) || !isFull(last)) return;
-    table.set('row_count', table.get('row_count')+1);
-  };
-
-  AngularDataTableAutoAppendRow.prototype._onAfterEdit = function (isEmpty, isFull, table,  obj) {
-    if (!obj.row || !isFull(obj.row)) return; //nothing to be done ....
-    this._doAppend (isEmpty, isFull, table);
-  };
-
-  AngularDataTableAutoAppendRow.prototype._onRemoveRequested = function (table, evnt, obj) {
-    table.removeRow (obj);
-  };
-
-  applib.registerModifier ('AngularDataTableAutoAppendRow', AngularDataTableAutoAppendRow);
-
-}
-
-module.exports = createAngularDataTableAutoAppendRowModifier;
-
-},{}],11:[function(require,module,exports){
+},{"./controllers/basiccreator":2,"./controllers/basicscreator":3,"./elements/angularcreator":4,"./elements/basiccreator":5,"./elements/formlogiccreator":6,"./elements/notificationcreator":7,"./modifiers/timeintervalcreator":9,"./preprocessors/angularcreator":10,"./preprocessors/notificationfromfunctioncreator":11,"./preprocessors/notificatorcreator":12,"./resources/bootstrappercreator":13}],9:[function(require,module,exports){
 function createTimeIntervalModifier (execlib, applib) {
   'use strict';
   var lib = execlib.lib,
@@ -1935,11 +1211,11 @@ function createTimeIntervalModifier (execlib, applib) {
   };
 
   applib.registerModifier ('TimeIntervalReset', TimeIntervalReset);
-}  //)(ALLEX, ALLEX.WEB_COMPONENTS.allex_web_webappcomponent, ALLEX.WEB_COMPONENTS.allex_applib, jQuery);
+}
 
 module.exports = createTimeIntervalModifier;
 
-},{}],12:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 function createAngularPreprocessor (allex, applib, ANGULAR_REQUIREMENTS) {
   'use strict';
 
@@ -2012,12 +1288,12 @@ function createAngularPreprocessor (allex, applib, ANGULAR_REQUIREMENTS) {
   }
 
   registerPreprocessor ('AngularPreProcessor', AngularPreProcessor);
-}  //)(ALLEX, ALLEX.WEB_COMPONENTS.allex_applib,ALLEX.WEB_COMPONENTS.allex_web_webappcomponent);
+}
 
 module.exports = createAngularPreprocessor;
 
 
-},{}],13:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 function createAngularNotificationFromFunctionPreprocessor (execlib, applib) {
   'use strict';
 
@@ -2089,7 +1365,7 @@ function createAngularNotificationFromFunctionPreprocessor (execlib, applib) {
 
 module.exports = createAngularNotificationFromFunctionPreprocessor;
 
-},{}],14:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 function createNotificatorPreprocessor (allex, applib, jqueryelementslib) {
   'use strict';
   var lib = allex.lib,
@@ -2138,7 +1414,7 @@ function createNotificatorPreprocessor (allex, applib, jqueryelementslib) {
 
 module.exports = createNotificatorPreprocessor;
 
-},{}],15:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 function createAngularBootstrapperResource (allex, applib, ANGULAR_REQUIREMENTS) {
   'use strict';
 
@@ -2176,7 +1452,7 @@ function createAngularBootstrapperResource (allex, applib, ANGULAR_REQUIREMENTS)
       if (deps.indexOf('allex_angular1elementslib') < 0) deps.push ('allex_angular1elementslib');
       if (deps.indexOf('allex_angularwebcomponent') < 0) deps.push ('allex_angularwebcomponent');
     }else{
-      deps = ['allex_applib'];
+      deps = ['allex_angular1elementslib', 'allex_angularwebcomponent'];
     }
 
     ANGULAR_REQUIREMENTS.traverse (_appendToDeps.bind(null, deps));
@@ -2194,7 +1470,7 @@ function createAngularBootstrapperResource (allex, applib, ANGULAR_REQUIREMENTS)
 
   AngularBootstrapper.prototype.DEFAULT_CONFIG = function () {
     return {
-      angular_dependencies : ['allex_applib']
+      angular_dependencies : ['allex_angularwebcomponent']
     };
   };
 
@@ -2209,7 +1485,7 @@ function createAngularBootstrapperResource (allex, applib, ANGULAR_REQUIREMENTS)
 
 
   applib.registerResourceType ('AngularBootstrapper', AngularBootstrapper);
-}  //)(ALLEX, ALLEX.WEB_COMPONENTS.allex_web_webappcomponent, ALLEX.WEB_COMPONENTS.allex_applib, angular, jQuery);
+}
 
 module.exports = createAngularBootstrapperResource;
 

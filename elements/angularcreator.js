@@ -62,7 +62,6 @@ function createAngularElement (execlib, basicControllers, BasicAngularElement, a
       return ret;
     };
     applib.registerElementType('AngularFormElement', AngularFormElement);
-
-}  //)(ALLEX, ALLEX.WEB_COMPONENTS.allex_web_webappcomponent, ALLEX.WEB_COMPONENTS.allex_applib, angular.module('allex_applib'));
+}
 
 module.exports = createAngularElement;

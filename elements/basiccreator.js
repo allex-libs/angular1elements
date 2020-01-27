@@ -4,35 +4,27 @@ function createBasic(allex, basicControllers, applib, jqueryelementslib) {
   var lib = allex.lib,
     BasicAngularController = lib.BasicAngularController,
     WebElement = applib.getElementType('WebElement'),
-    DataElementMixIn = jqueryelementslib.DataElementMixIn,
+    DataElementMixin = applib.mixins.DataElementMixin,
     q = lib.q;
 
     function BasicAngularElement (id, options) {
       WebElement.call(this, id, options);
-      DataElementMixIn.call(this);
+      DataElementMixin.call(this);
+      this.q = new lib.Fifo();
       this._addHook('onAngularReady');
       this.$scopectrl = null;
       if (options && options.initialData) this.set('data', options.initialData);
     }
     lib.inherit (BasicAngularElement, WebElement);
+    DataElementMixin.addMethods(BasicAngularElement);
     BasicAngularElement.prototype.__cleanUp = function () {
       this.$scopectrl = null;
-      DataElementMixIn.prototype.__cleanUp.call(this);
+      if (this.q) {
+        this.q.destroy();
+      }
+      this.q = null;
+      DataElementMixin.prototype.__cleanUp.call(this);
       WebElement.prototype.__cleanUp.call(this);
-    };
-
-    BasicAngularElement.prototype.updateHashField = function (name, value) {
-      var val = {};
-      val[name] = value;
-      this.set('data', lib.extend ({}, this.get('data'), val));
-    };
-
-    BasicAngularElement.prototype.updateArrayElement = function (index, value) {
-      var old = this.get('data'),
-        n = old ? old.slice() : [];
-
-      n[index] = value;
-      this.set('data', n);
     };
 
     BasicAngularElement.prototype.getArrayDataCopy = function () {
@@ -49,17 +41,32 @@ function createBasic(allex, basicControllers, applib, jqueryelementslib) {
       this._onScope(val);
       this._setRaise();
       this.fireHook('onAngularReady', [this]);
-      this.$scopectrl.set('data', this.get('data'));
+      this.q.drain(this.executeOnScopeer.bind(this));
+      //console.log('E, OD SAD MOZE NESTO DA SE RADI!', this.get('data'), this.data);
+      //this.$scopectrl.set('data', this.get('data'));
+      //this.$scopectrl.set('data', this.data);
     };
 
+    /*
     BasicAngularElement.prototype.isScopeReady = function () {
-      return !!this.$scopectrl;
+      var ret = !!this.$scopectrl;
+      if (!ret) {
+        console.warn(this.constructor.name, 'still has no $scopectrl');
+      }
+      return ret;
     };
+    */
 
-    BasicAngularElement.prototype.executeOnScopeIfReady = function (method, args) {
-      if (!this.$scopectrl) return;
+    BasicAngularElement.prototype.executeOnScopeer = function (qelem) {
+      this.executeOnScope(qelem[0], qelem[1]);
+    };
+    BasicAngularElement.prototype.executeOnScope = function (method, args) {
+      if (!this.$scopectrl) {
+        this.q.push([method, args]);
+        return;
+      }
       var fc = lib.readPropertyFromDotDelimitedString (this.$scopectrl, method, true);
-      return fc.val.apply(fc.ctx, args);
+      fc.val.apply(fc.ctx, args);
     };
 
     BasicAngularElement.prototype._setRaise = function () {
@@ -68,9 +75,9 @@ function createBasic(allex, basicControllers, applib, jqueryelementslib) {
     };
 
     BasicAngularElement.prototype.set_data = function (val) {
-      var ret = DataElementMixIn.prototype.set_data.call(this, val);
-      if (DataElementMixIn.prototype.hasDataChanged.call(this, ret)){
-        this.executeOnScopeIfReady ('set', ['data', this.data]);
+      var ret = DataElementMixin.prototype.set_data.call(this, val);
+      if (DataElementMixin.prototype.hasDataChanged.call(this, ret)){
+        this.executeOnScope ('set', ['data', this.data]);
       }
       return ret;
     };

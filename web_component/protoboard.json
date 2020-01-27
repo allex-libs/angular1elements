@@ -1,5 +1,19 @@
 {
   "js": {
+    "lib" : [
+      "../angular/index.js",
+      "../angular/directives/allexAngularValidate.js",
+      "../angular/directives/allexMatchValidate.js",
+      "../angular/directives/allexDatetimePicker.js",
+      "../angular/directives/allexOnEnterSubmit.js",
+      "../angular/filters/allexJoinFilter.js",
+      "../angular/filters/allexTranslateFilter.js",
+      "../angular/filters/allexDateFilter.js",
+      "../angular/filters/allexRange.js",
+      "../angular/filters/allexFindAndReplaceFilter.js",
+      "../angular/filters/allexPrependFilter.js",
+      "../angular/filters/allexPercentage.js"
+    ]
   },
   "browserify": {
     "dist/browserified.js":"../browserify.js"
@@ -7,6 +21,18 @@
   "exclude": {
     "jshint": [
       "browserified.js"
+    ]
+  },
+  "additionaltargets": {
+    "js": [
+      ["dist", "lib.js"]
+    ]
+  },
+  "dependencies": {
+    "js": [
+      "allex:jqueryelements:lib",
+      "node_modules/angular/angular.min.js",
+      "allex:objectarrayconversion:webcomponent"
     ]
   },
   "protoboard": {

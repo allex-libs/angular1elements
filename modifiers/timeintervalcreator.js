@@ -106,6 +106,6 @@ function createTimeIntervalModifier (execlib, applib) {
   };
 
   applib.registerModifier ('TimeIntervalReset', TimeIntervalReset);
-}  //)(ALLEX, ALLEX.WEB_COMPONENTS.allex_web_webappcomponent, ALLEX.WEB_COMPONENTS.allex_applib, jQuery);
+}
 
 module.exports = createTimeIntervalModifier;
