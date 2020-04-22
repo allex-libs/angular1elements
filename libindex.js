@@ -10,7 +10,7 @@ function createLib (execlib, applib, jqueryelementslib) {
 
   require('./resources/bootstrappercreator')(execlib, applib, ANGULAR_REQUIREMENTS);
   require('./elements/angularcreator')(execlib, basicControllers, BasicAngularElement, applib, angular_module);
-  require('./elements/formlogiccreator')(execlib, basicControllers, BasicAngularElement, applib, angular_module);
+  require('./elements/formlogiccreator')(execlib, basicControllers, BasicAngularElement, applib, jqueryelementslib, angular_module);
   require('./elements/notificationcreator')(execlib, basicControllers, BasicAngularElement, applib, angular_module);
   require('./modifiers/timeintervalcreator')(execlib, applib);
   require('./preprocessors/notificatorcreator')(execlib, applib, jqueryelementslib);

@@ -334,21 +334,21 @@ function createBasic(allex, basicControllers, applib, jqueryelementslib) {
 module.exports = createBasic;
 
 },{}],6:[function(require,module,exports){
-function createAngularFormLogic (execlib, basicControllers, BasicAngularElement, applib, angular_module) {
+function createAngularFormLogic (execlib, basicControllers, BasicAngularElement, applib, jqueryelementslib, angular_module) {
   'use strict';
 
   ///MIND THE FACT that form name should not contain - in their name ... for example form-bla will not work ... inspect that ...
 
   var lib = execlib.lib,
     BasicAngularElementController = basicControllers.BasicAngularElementController,
-    FormMixin = applib.mixins.FormMixin,
+    FormMixin = jqueryelementslib.mixins.form.Logic,//applib.mixins.FormMixin,
     q = lib.q,
     BasicModifier = applib.BasicModifier,
     BRACKET_END = /\[\]$/;
 
   function AngularFormLogic(id, options) {
     BasicAngularElement.call(this, id, options);
-    FormMixin.call(this, id, options);
+    FormMixin.call(this, options);
     this._valid_l = null;
     this._validfields_l = {};
   }
@@ -398,9 +398,8 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
     this.$element.attr ({ 'data-allex-angular-form-logic': ''});
   };
 
-  AngularFormLogic.prototype._prepareField = function (el) {
-    var $el = jQuery(el),
-      name = $el.attr('name'),
+  AngularFormLogic.prototype._prepareField = function ($el) {
+    var name = $el.attr('name'),
       model_name = this.getModelName(name);
 
     if (!model_name) {
@@ -590,98 +589,6 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
       }
     };
   });
-
-  function AngularFormLogicSubmitModifier (options) {
-    BasicModifier.call(this, options);
-  }
-
-  lib.inherit (AngularFormLogicSubmitModifier, BasicModifier);
-  AngularFormLogicSubmitModifier.prototype.destroy = function () {
-    BasicModifier.prototype.destroy.call(this);
-  };
-
-  AngularFormLogicSubmitModifier.prototype.doProcess = function (name, options, links, logic, resources) {
-    var elements = options.elements;
-    var submitid = name+'Submit',
-      path,
-      elementdesc = lib.extend({}, {
-        name : submitid,
-        type : 'WebElement'
-      }, this.config);
-
-    elements.push (elementdesc);
-    submitid = elementdesc.name;
-    path = '.'+submitid;
-
-    links.push ({
-      source : path+'.$element!click',
-      target : '.>fireSubmit'
-    },
-    {
-      source : '.:valid',
-      target : submitid+'.$element:attr.disabled',
-      filter : this._decideDisabled.bind(this)
-    });
-
-    switch (this.getConfigVal('actualon')){
-      case 'none':
-        break;
-      case 'always' : {
-        links.push ({
-          source : '.:actual',
-          target : path+':actual',
-        });
-        break;
-      }
-      default : 
-      case 'valid' : {
-        logic.push ({
-          triggers : [ '.:valid, .:actual' ],
-          references : path+', .',
-          handler : function (submit, form) {
-            submit.set('actual', form.get('valid') && form.get('actual'));
-          }
-        });
-        break;
-      }
-    }
-
-    switch (this.getConfigVal('enabledon')){
-      case 'none':
-        break;
-      case 'always' : {
-        links.push ({
-          source : '.:actual',
-          target : path+':enabled',
-        });
-        break;
-      }
-      default : 
-      case 'valid' : {
-        logic.push ({
-          triggers : [ '.:valid, .:actual' ],
-          references : path+', .',
-          handler : function (submit, form) {
-            submit.set('enabled', form.get('valid') && form.get('actual'));
-          }
-        });
-        break;
-      }
-    }
-  };
-  AngularFormLogicSubmitModifier.prototype._decideDisabled = function (valid) {
-    return valid ? undefined : 'disabled';
-  };
-
-  AngularFormLogicSubmitModifier.ALLOWED_ON = ['AngularFormLogic'];
-  AngularFormLogicSubmitModifier.prototype.DEFAULT_CONFIG = function () {
-    return {
-      actualon : 'valid'
-    };
-  };
-
-  applib.registerModifier ('AngularFormLogic.submit', AngularFormLogicSubmitModifier);
-
 
   function SubmissionModifier (options) {
     BasicModifier.call(this, options);
@@ -1084,7 +991,7 @@ function createLib (execlib, applib, jqueryelementslib) {
 
   require('./resources/bootstrappercreator')(execlib, applib, ANGULAR_REQUIREMENTS);
   require('./elements/angularcreator')(execlib, basicControllers, BasicAngularElement, applib, angular_module);
-  require('./elements/formlogiccreator')(execlib, basicControllers, BasicAngularElement, applib, angular_module);
+  require('./elements/formlogiccreator')(execlib, basicControllers, BasicAngularElement, applib, jqueryelementslib, angular_module);
   require('./elements/notificationcreator')(execlib, basicControllers, BasicAngularElement, applib, angular_module);
   require('./modifiers/timeintervalcreator')(execlib, applib);
   require('./preprocessors/notificatorcreator')(execlib, applib, jqueryelementslib);
