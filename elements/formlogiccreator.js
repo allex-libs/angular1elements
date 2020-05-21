@@ -1,4 +1,4 @@
-function createAngularFormLogic (execlib, basicControllers, BasicAngularElement, applib, jqueryelementslib, angular_module) {
+function createAngularFormLogic (execlib, basicControllers, BasicAngularElement, applib, jqueryelementslib, formvalidationlib, angular_module) {
   'use strict';
 
   ///MIND THE FACT that form name should not contain - in their name ... for example form-bla will not work ... inspect that ...
@@ -8,6 +8,7 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
     FormMixin = jqueryelementslib.mixins.form.Logic,//applib.mixins.FormMixin,
     q = lib.q,
     BasicModifier = applib.BasicModifier,
+    FormValidatorMixin = formvalidationlib.mixins.FormValidator,
     BRACKET_END = /\[\]$/;
 
   function AngularFormLogic(id, options) {
@@ -163,11 +164,10 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
 
   function AllexAngularFormLogicController ($scope) {
     BasicAngularElementController.call(this, $scope);
+    FormValidatorMixin.call(this);
     this.data = {};
     this.valid = false;
     this._watcher = null;
-    this.validation = null;
-    this.confirmationfields = null;
     this._onChange = null;
     this.config = null;
     this.progress = null;
@@ -175,18 +175,18 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
     this.disabled = false;
   }
   lib.inherit(AllexAngularFormLogicController, BasicAngularElementController);
+  FormValidatorMixin.addMethods(AllexAngularFormLogicController);
   AllexAngularFormLogicController.prototype.__cleanUp = function () {
     this.disabled = null;
     this.ftion_status = null;
     this.progress = null;
-    this.confirmationfields = null;
-    this.validation = null;
     if (this._watcher) this._watcher();
     this._watcher = null;
     this.data = null;
     this.valid = null;
     this._onChange = null;
     this.config = null;
+    FormValidatorMixin.prototype.destroy.call(this);
     BasicAngularElementController.prototype.__cleanUp.call(this);
   };
 
@@ -206,37 +206,7 @@ function createAngularFormLogic (execlib, basicControllers, BasicAngularElement,
   };
 
   AllexAngularFormLogicController.prototype.validate = function (name, modelValue, viewValue) {
-    var validation = this.validation, confirmationfields = this.confirmationfields;
-    if (lib.isVal(modelValue) && confirmationfields && 'object' === typeof confirmationfields && name in confirmationfields) {
-      if (modelValue !== this.data[confirmationfields[name]]) {
-        return false;
-      }
-    }
-    if (!validation) return true;
-
-    if (!validation[name]) return true;
-    if (!this.validateJSON(validation[name].json_schema, modelValue)) return false;
-    if (!this.validateRegExp(validation[name].regex, modelValue)) return false;
-    return this.validateFunction (validation[name].custom, modelValue);
-  };
-
-
-  AllexAngularFormLogicController.prototype.validateJSON = function (schema, value) {
-    if (!schema) return true;
-    var result = lib.jsonschema.validate(value, schema);
-    return !result.errors.length;
-  };
-
-  AllexAngularFormLogicController.prototype.validateRegExp = function (regexp, value) {
-    if (!regexp) return true;
-    if (!(regexp instanceof RegExp)) return true;
-    var result = regexp.test(value);
-    return result;
-  };
-
-  AllexAngularFormLogicController.prototype.validateFunction = function (f, value) {
-    if (!lib.isFunction (f)) return true;
-    return f(value, this.data);
+    return FormValidatorMixin.prototype.validateFieldNameWithValue.call(this, name, modelValue);
   };
 
   angular_module.controller('allexAngularFormLogicController', ['$scope', function ($scope) {

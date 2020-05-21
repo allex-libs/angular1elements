@@ -32,7 +32,9 @@
     "js": [
       "allex:jqueryelements:lib",
       "node_modules/angular/angular.min.js",
-      "allex:objectarrayconversion:webcomponent"
+      "allex:objectarrayconversion:webcomponent",
+      "allex:formlogic:webcomponent",
+      "allex:formvalidation:lib"
     ]
   },
   "protoboard": {
